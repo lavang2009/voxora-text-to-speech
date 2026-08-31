@@ -284,7 +284,7 @@ export default function Studio() {
       ) {
         const mammoth =
           await import(
-            "mammoth.browser"
+            "mammoth"
           );
 
         const result =
