@@ -6,34 +6,184 @@ import type {
 import { z } from "zod";
 
 import { adminAuth } from "../../src/config/firebaseAdmin.js";
-import { provider } from "../../src/services/providerRegistry.js";
 
-import { chunkText } from "../../src/utils/chunkText.js";
+import {
+  provider,
+} from "../../src/services/providerRegistry.js";
+
+import {
+  chunkText,
+} from "../../src/utils/chunkText.js";
+
 import {
   mergeMp3,
   mp3ToWav,
   durationSeconds,
 } from "../../src/utils/audio.js";
 
+import cloudinary from "../../src/config/cloudinary.js";
+
+const ALLOWED_ORIGIN =
+  process.env.CLIENT_ORIGIN ||
+  "https://voxora-text-to-speech.vercel.app";
+
+const MAX_TEXT_CHARS = Number(
+  process.env.MAX_TEXT_CHARS ||
+    20000
+);
+
 const schema = z.object({
   text: z.string().trim().min(1),
+
   voiceId: z.string().min(1),
+
   language: z.string().min(2),
-  speed: z.coerce.number().min(0.5).max(2),
-  pitch: z.coerce.number().min(-50).max(50),
-  volume: z.coerce.number().min(0).max(1),
-  format: z.enum(["mp3", "wav"]),
+
+  speed: z.coerce
+    .number()
+    .min(0.5)
+    .max(2),
+
+  pitch: z.coerce
+    .number()
+    .min(-50)
+    .max(50),
+
+  volume: z.coerce
+    .number()
+    .min(0)
+    .max(1),
+
+  format: z.enum([
+    "mp3",
+    "wav",
+  ]),
 });
 
+/**
+ * Set CORS headers.
+ */
+function setCors(
+  res: VercelResponse
+) {
+  res.setHeader(
+    "Access-Control-Allow-Origin",
+    ALLOWED_ORIGIN
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "POST, OPTIONS"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Credentials",
+    "true"
+  );
+
+  res.setHeader(
+    "Vary",
+    "Origin"
+  );
+}
+
+/**
+ * Upload generated audio to Cloudinary.
+ */
+async function uploadAudio(
+  buffer: Buffer,
+  format: "mp3" | "wav",
+  uid: string
+): Promise<string> {
+  return new Promise(
+    (resolve, reject) => {
+      const stream =
+        cloudinary.uploader.upload_stream(
+          {
+            resource_type: "raw",
+
+            folder:
+              `voxora/${uid}/audio`,
+
+            public_id:
+              `voice-${Date.now()}`,
+
+            format,
+          },
+
+          (
+            error,
+            result
+          ) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            if (
+              !result?.secure_url
+            ) {
+              reject(
+                new Error(
+                  "Cloudinary did not return a secure URL."
+                )
+              );
+
+              return;
+            }
+
+            resolve(
+              result.secure_url
+            );
+          }
+        );
+
+      stream.end(buffer);
+    }
+  );
+}
+
+/**
+ * API handler.
+ */
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  if (req.method !== "POST") {
+  /*
+   * CORS
+   */
+  setCors(res);
+
+  /*
+   * Preflight
+   */
+  if (
+    req.method ===
+    "OPTIONS"
+  ) {
+    return res
+      .status(204)
+      .end();
+  }
+
+  /*
+   * Method
+   */
+  if (
+    req.method !==
+    "POST"
+  ) {
     return res.status(405).json({
       success: false,
       error: {
-        code: "METHOD_NOT_ALLOWED",
+        code:
+          "METHOD_NOT_ALLOWED",
         message:
           "Method not allowed.",
       },
@@ -56,7 +206,8 @@ export default async function handler(
       return res.status(401).json({
         success: false,
         error: {
-          code: "UNAUTHENTICATED",
+          code:
+            "UNAUTHENTICATED",
           message:
             "Please sign in.",
         },
@@ -64,22 +215,48 @@ export default async function handler(
     }
 
     const token =
-      authorization.substring(
-        7
+      authorization.slice(7);
+
+    let decoded;
+
+    try {
+      decoded =
+        await adminAuth.verifyIdToken(
+          token
+        );
+    } catch (error) {
+      console.error(
+        "Firebase token error:",
+        error
       );
 
-    const decoded =
-      await adminAuth.verifyIdToken(
-        token
-      );
+      return res.status(401).json({
+        success: false,
+        error: {
+          code:
+            "INVALID_TOKEN",
+          message:
+            "Your session is invalid or expired.",
+        },
+      });
+    }
 
     /*
-     * Validate request
+     * Validate body
      */
     const parsed =
-      schema.safeParse(req.body);
+      schema.safeParse(
+        req.body
+      );
 
-    if (!parsed.success) {
+    if (
+      !parsed.success
+    ) {
+      console.error(
+        "TTS validation error:",
+        parsed.error.flatten()
+      );
+
       return res.status(400).json({
         success: false,
         error: {
@@ -87,6 +264,8 @@ export default async function handler(
             "INVALID_REQUEST",
           message:
             "Invalid TTS request.",
+          details:
+            parsed.error.flatten(),
         },
       });
     }
@@ -94,15 +273,12 @@ export default async function handler(
     const options =
       parsed.data;
 
-    const max =
-      Number(
-        process.env.MAX_TEXT_CHARS ||
-          20000
-      );
-
+    /*
+     * Text length
+     */
     if (
       options.text.length >
-      max
+      MAX_TEXT_CHARS
     ) {
       return res.status(400).json({
         success: false,
@@ -110,17 +286,39 @@ export default async function handler(
           code:
             "TEXT_TOO_LONG",
           message:
-            `Text is too long. Maximum ${max} characters.`,
+            `Text is too long. Maximum ${MAX_TEXT_CHARS} characters.`,
         },
       });
     }
 
     /*
-     * Get voices
+     * Get real voices
      */
-    const voices =
-      await provider.getVoices();
+    let voices;
 
+    try {
+      voices =
+        await provider.getVoices();
+    } catch (error) {
+      console.error(
+        "Voice provider error:",
+        error
+      );
+
+      return res.status(503).json({
+        success: false,
+        error: {
+          code:
+            "VOICE_PROVIDER_UNAVAILABLE",
+          message:
+            "The voice provider is temporarily unavailable.",
+        },
+      });
+    }
+
+    /*
+     * Find voice
+     */
     const selectedVoice =
       voices.find(
         (voice) =>
@@ -128,7 +326,9 @@ export default async function handler(
           options.voiceId
       );
 
-    if (!selectedVoice) {
+    if (
+      !selectedVoice
+    ) {
       return res.status(400).json({
         success: false,
         error: {
@@ -141,7 +341,7 @@ export default async function handler(
     }
 
     /*
-     * Split long text
+     * Split text
      */
     const chunks =
       chunkText(
@@ -149,7 +349,9 @@ export default async function handler(
         2800
       );
 
-    if (!chunks.length) {
+    if (
+      chunks.length === 0
+    ) {
       return res.status(400).json({
         success: false,
         error: {
@@ -161,89 +363,341 @@ export default async function handler(
       });
     }
 
+    console.log(
+      `[TTS] user=${decoded.uid}`
+    );
+
+    console.log(
+      `[TTS] voice=${selectedVoice.id}`
+    );
+
+    console.log(
+      `[TTS] language=${selectedVoice.locale}`
+    );
+
+    console.log(
+      `[TTS] format=${options.format}`
+    );
+
+    console.log(
+      `[TTS] chunks=${chunks.length}`
+    );
+
     /*
-     * Generate audio
+     * Vercel limitation:
+     *
+     * For one MP3 chunk we can return
+     * the provider output directly.
+     *
+     * Multiple chunks require FFmpeg.
+     *
+     * WAV also requires conversion.
      */
-    const buffers: Buffer[] =
-      [];
-
-    for (
-      let i = 0;
-      i < chunks.length;
-      i++
+    if (
+      chunks.length > 1
     ) {
-      console.log(
-        `Generating chunk ${i + 1}/${chunks.length}`
-      );
+      try {
+        const buffers: Buffer[] =
+          [];
 
-      const audio =
-        await provider.generate({
-          ...options,
-          text: chunks[i],
-          voiceId:
-            selectedVoice.id,
-          language:
-            selectedVoice.locale,
+        for (
+          let i = 0;
+          i < chunks.length;
+          i++
+        ) {
+          console.log(
+            `[TTS] generating chunk ${i + 1}/${chunks.length}`
+          );
 
-          /*
-           * Generate MP3 first.
-           * WAV conversion happens after merge.
-           */
-          format: "mp3",
-        });
+          const audio =
+            await provider.generate(
+              {
+                ...options,
 
-      if (
-        !audio ||
-        !audio.length
-      ) {
-        throw new Error(
-          "TTS provider returned empty audio."
+                text:
+                  chunks[i],
+
+                voiceId:
+                  selectedVoice.id,
+
+                language:
+                  selectedVoice.locale,
+
+                format: "mp3",
+              }
+            );
+
+          if (
+            !audio ||
+            !audio.length
+          ) {
+            throw new Error(
+              "TTS provider returned empty audio."
+            );
+          }
+
+          buffers.push(audio);
+        }
+
+        /*
+         * Merge using FFmpeg.
+         */
+        let output =
+          await mergeMp3(
+            buffers
+          );
+
+        /*
+         * Convert WAV if requested.
+         */
+        if (
+          options.format ===
+          "wav"
+        ) {
+          output =
+            await mp3ToWav(
+              output
+            );
+        }
+
+        /*
+         * Duration
+         */
+        const duration =
+          await durationSeconds(
+            output,
+            options.format
+          );
+
+        /*
+         * Cloudinary
+         */
+        let audioUrl =
+          "";
+
+        if (
+          (
+            process.env
+              .SAVE_AUDIO_TO_CLOUDINARY ||
+            "false"
+          ) === "true"
+        ) {
+          try {
+            audioUrl =
+              await uploadAudio(
+                output,
+                options.format,
+                decoded.uid
+              );
+          } catch (
+            uploadError
+          ) {
+            console.error(
+              "Cloudinary audio upload failed:",
+              uploadError
+            );
+          }
+        }
+
+        res.setHeader(
+          "Content-Type",
+          options.format ===
+            "wav"
+            ? "audio/wav"
+            : "audio/mpeg"
         );
-      }
 
-      buffers.push(audio);
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="voice-${Date.now()}.${options.format}"`
+        );
+
+        res.setHeader(
+          "X-Audio-Duration",
+          String(
+            duration || 0
+          )
+        );
+
+        res.setHeader(
+          "X-Audio-Url",
+          audioUrl
+        );
+
+        return res.send(
+          output
+        );
+      } catch (error: any) {
+        console.error(
+          "Multi-chunk processing failed:",
+          error
+        );
+
+        return res.status(502).json({
+          success: false,
+          error: {
+            code:
+              "AUDIO_PROCESSING_FAILED",
+            message:
+              error?.message ||
+              "Unable to process generated audio. The deployment environment may not have FFmpeg available.",
+          },
+        });
+      }
     }
 
     /*
-     * Merge
+     * Single chunk
+     *
+     * This path avoids FFmpeg.
      */
+    console.log(
+      "[TTS] generating single chunk"
+    );
+
     let output: Buffer;
 
-    if (
-      buffers.length === 1
-    ) {
-      output = buffers[0];
-    } else {
+    try {
       output =
-        await mergeMp3(
-          buffers
+        await provider.generate(
+          {
+            ...options,
+
+            text:
+              chunks[0],
+
+            voiceId:
+              selectedVoice.id,
+
+            language:
+              selectedVoice.locale,
+
+            /*
+             * Always generate MP3
+             * from the provider.
+             */
+            format: "mp3",
+          }
         );
+    } catch (error: any) {
+      console.error(
+        "TTS provider generation failed:",
+        error
+      );
+
+      return res.status(502).json({
+        success: false,
+        error: {
+          code:
+            "TTS_PROVIDER_ERROR",
+          message:
+            error?.message ||
+            "The TTS provider failed to generate audio.",
+        },
+      });
+    }
+
+    if (
+      !output ||
+      !output.length
+    ) {
+      return res.status(502).json({
+        success: false,
+        error: {
+          code:
+            "EMPTY_AUDIO",
+          message:
+            "The TTS provider returned an empty audio file.",
+        },
+      });
     }
 
     /*
-     * WAV
+     * WAV requires FFmpeg.
      */
     if (
       options.format ===
       "wav"
     ) {
-      output =
-        await mp3ToWav(
-          output
+      try {
+        output =
+          await mp3ToWav(
+            output
+          );
+      } catch (error: any) {
+        console.error(
+          "WAV conversion failed:",
+          error
         );
+
+        return res.status(502).json({
+          success: false,
+          error: {
+            code:
+              "WAV_CONVERSION_FAILED",
+            message:
+              "WAV conversion requires FFmpeg on the server.",
+          },
+        });
+      }
     }
 
     /*
-     * Duration
+     * Duration.
+     *
+     * Failure here must NOT
+     * break the generated audio.
      */
-    const duration =
-      await durationSeconds(
-        output,
-        options.format
+    let duration = 0;
+
+    try {
+      duration =
+        await durationSeconds(
+          output,
+          options.format
+        );
+    } catch (error) {
+      console.warn(
+        "Duration detection failed:",
+        error
       );
+    }
 
     /*
-     * Return file
+     * Upload audio to Cloudinary.
+     */
+    let audioUrl = "";
+
+    if (
+      (
+        process.env
+          .SAVE_AUDIO_TO_CLOUDINARY ||
+        "false"
+      ) === "true"
+    ) {
+      try {
+        audioUrl =
+          await uploadAudio(
+            output,
+            options.format,
+            decoded.uid
+          );
+      } catch (
+        uploadError
+      ) {
+        /*
+         * Cloudinary failure must not
+         * destroy generated audio.
+         */
+        console.error(
+          "Cloudinary upload failed:",
+          uploadError
+        );
+      }
+    }
+
+    /*
+     * Response headers
      */
     res.setHeader(
       "Content-Type",
@@ -260,16 +714,25 @@ export default async function handler(
 
     res.setHeader(
       "X-Audio-Duration",
-      String(duration)
+      String(
+        Number.isFinite(
+          duration
+        )
+          ? duration
+          : 0
+      )
     );
 
     res.setHeader(
       "X-Audio-Url",
-      ""
+      audioUrl
     );
 
+    /*
+     * Success
+     */
     console.log(
-      `TTS success for ${decoded.uid}: ${options.format}, ${output.length} bytes`
+      `[TTS] success ${output.length} bytes`
     );
 
     return res.send(
@@ -277,18 +740,17 @@ export default async function handler(
     );
   } catch (error: any) {
     console.error(
-      "Vercel TTS error:",
+      "Unexpected Vercel TTS error:",
       error
     );
 
-    return res.status(502).json({
+    return res.status(500).json({
       success: false,
       error: {
         code:
-          "TTS_PROVIDER_ERROR",
+          "INTERNAL_TTS_ERROR",
         message:
-          error?.message ||
-          "Unable to generate audio.",
+          "An unexpected error occurred while generating audio.",
       },
     });
   }
