@@ -1,4 +1,3 @@
-```ts
 import type {
   VercelRequest,
   VercelResponse,
@@ -35,4 +34,3 @@ export default async function handler(
     });
   }
 }
-```
