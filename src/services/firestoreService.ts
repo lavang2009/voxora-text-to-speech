@@ -1,3 +1,4 @@
+
 import {
   addDoc,
   collection,
@@ -19,15 +20,10 @@ import type {
   Voice,
 } from "../types";
 
-/**
- * Remove undefined recursively.
- */
-function removeUndefinedFields<T>(
-  value: T
-): T {
+function removeUndefined<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((item) =>
-      removeUndefinedFields(item)
+      removeUndefined(item)
     ) as T;
   }
 
@@ -40,18 +36,14 @@ function removeUndefinedFields<T>(
       unknown
     > = {};
 
-    for (const [
-      key,
-      fieldValue,
-    ] of Object.entries(
+    for (const [key, item] of Object.entries(
       value as Record<string, unknown>
     )) {
-      if (fieldValue === undefined) {
+      if (item === undefined) {
         continue;
       }
 
-      result[key] =
-        removeUndefinedFields(fieldValue);
+      result[key] = removeUndefined(item);
     }
 
     return result as T;
@@ -60,13 +52,8 @@ function removeUndefinedFields<T>(
   return value;
 }
 
-/**
- * Convert Firestore data into Voice.
- */
-function toVoice(
-  data: Record<string, any>
-): Voice {
-  const gender =
+function toVoice(data: Record<string, any>): Voice {
+  const gender: Voice["gender"] =
     data.gender === "Male" ||
     data.gender === "Female" ||
     data.gender === "Neutral"
@@ -75,11 +62,17 @@ function toVoice(
 
   return {
     id: String(data.id ?? ""),
-    name: String(data.name ?? "Unknown Voice"),
-    language: String(
-      data.language ?? data.locale ?? ""
+    name: String(
+      data.name ?? "Unknown Voice"
     ),
-    locale: String(data.locale ?? ""),
+    language: String(
+      data.language ??
+        data.locale ??
+        ""
+    ),
+    locale: String(
+      data.locale ?? ""
+    ),
     gender,
     provider: String(
       data.provider ?? "Unknown"
@@ -88,18 +81,19 @@ function toVoice(
       data.type ?? "custom"
     ),
     friendlyName:
-      data.friendlyName
+      data.friendlyName !== undefined
         ? String(data.friendlyName)
         : undefined,
     isPopular:
-      typeof data.isPopular === "boolean"
+      typeof data.isPopular ===
+      "boolean"
         ? data.isPopular
         : false,
   };
 }
 
 /**
- * Save user preferences.
+ * Save preferences
  */
 export const savePreferences = async (
   uid: string,
@@ -108,28 +102,24 @@ export const savePreferences = async (
   await setDoc(
     doc(db, "users", uid),
     {
-      preferences:
-        removeUndefinedFields(
-          preferences
-        ),
-      updatedAt:
-        serverTimestamp(),
+      preferences: removeUndefined(
+        preferences
+      ),
+      updatedAt: serverTimestamp(),
     },
-    {
-      merge: true,
-    }
+    { merge: true }
   );
 };
 
 /**
- * Save favorite voice.
+ * Save favorite
  */
 export const saveFavorite = async (
   uid: string,
   voice: Voice
 ) => {
   const cleanVoice =
-    removeUndefinedFields(voice);
+    removeUndefined(voice);
 
   await setDoc(
     doc(
@@ -141,14 +131,13 @@ export const saveFavorite = async (
     ),
     {
       ...cleanVoice,
-      createdAt:
-        serverTimestamp(),
+      createdAt: serverTimestamp(),
     }
   );
 };
 
 /**
- * Remove favorite.
+ * Remove favorite
  */
 export const removeFavorite = async (
   uid: string,
@@ -166,7 +155,10 @@ export const removeFavorite = async (
 };
 
 /**
- * Get favorites.
+ * Get favorites
+ *
+ * Explicitly returns Voice[]
+ * to prevent DocumentData[] errors.
  */
 export const getFavorites = async (
   uid: string
@@ -180,13 +172,14 @@ export const getFavorites = async (
     )
   );
 
-  return snapshot.docs.map((item) =>
-    toVoice(item.data())
+  return snapshot.docs.map(
+    (item) =>
+      toVoice(item.data())
   );
 };
 
 /**
- * Add generation history.
+ * Add history
  */
 export const addHistory = async (
   uid: string,
@@ -196,7 +189,7 @@ export const addHistory = async (
   >
 ) => {
   const cleanItem =
-    removeUndefinedFields(item);
+    removeUndefined(item);
 
   const ref = await addDoc(
     collection(
@@ -207,8 +200,7 @@ export const addHistory = async (
     ),
     {
       ...cleanItem,
-      createdAt:
-        serverTimestamp(),
+      createdAt: serverTimestamp(),
     }
   );
 
@@ -216,7 +208,7 @@ export const addHistory = async (
 };
 
 /**
- * Get generation history.
+ * Get history
  */
 export const getHistory = async (
   uid: string
@@ -236,7 +228,9 @@ export const getHistory = async (
   );
 
   const snapshot =
-    await getDocs(historyQuery);
+    await getDocs(
+      historyQuery
+    );
 
   return snapshot.docs.map(
     (document) => {
@@ -267,7 +261,7 @@ export const getHistory = async (
 };
 
 /**
- * Delete history.
+ * Delete history
  */
 export const deleteHistory = async (
   uid: string,
@@ -285,15 +279,12 @@ export const deleteHistory = async (
 };
 
 /**
- * Save custom voice.
+ * Save custom voice
  */
 export const saveCustomVoice = async (
   uid: string,
   voice: Voice
 ) => {
-  const cleanVoice =
-    removeUndefinedFields(voice);
-
   await setDoc(
     doc(
       db,
@@ -303,15 +294,14 @@ export const saveCustomVoice = async (
       voice.id
     ),
     {
-      ...cleanVoice,
-      createdAt:
-        serverTimestamp(),
+      ...removeUndefined(voice),
+      createdAt: serverTimestamp(),
     }
   );
 };
 
 /**
- * Get custom voices.
+ * Get custom voices
  */
 export const getCustomVoices = async (
   uid: string
@@ -325,7 +315,8 @@ export const getCustomVoices = async (
     )
   );
 
-  return snapshot.docs.map((item) =>
-    toVoice(item.data())
+  return snapshot.docs.map(
+    (item) =>
+      toVoice(item.data())
   );
 };
