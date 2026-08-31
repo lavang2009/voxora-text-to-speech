@@ -1,3 +1,4 @@
+
 import {
   useEffect,
   useMemo,
@@ -36,31 +37,47 @@ import {
 import type { Voice } from "../types";
 
 export default function Voices() {
-  const store = useAppStore();
+  const user =
+    useAppStore(
+      (state) => state.user
+    );
 
-  const {
-    voices,
-    setVoices,
-    favorites,
-    toggleFavorite,
-    user,
-    setFavorites,
-  } = store;
+  const voices =
+    useAppStore(
+      (state) => state.voices
+    );
 
-  const [
-    search,
-    setSearch,
-  ] = useState("");
+  const favorites =
+    useAppStore(
+      (state) => state.favorites
+    );
 
-  const [
-    language,
-    setLanguage,
-  ] = useState("all");
+  const setVoices =
+    useAppStore(
+      (state) =>
+        state.setVoices
+    );
 
-  const [
-    gender,
-    setGender,
-  ] = useState("all");
+  const setFavorites =
+    useAppStore(
+      (state) =>
+        state.setFavorites
+    );
+
+  const toggleFavorite =
+    useAppStore(
+      (state) =>
+        state.toggleFavorite
+    );
+
+  const [search, setSearch] =
+    useState("");
+
+  const [language, setLanguage] =
+    useState("all");
+
+  const [gender, setGender] =
+    useState("all");
 
   const [
     customOpen,
@@ -82,28 +99,34 @@ export default function Voices() {
     setCustomProvider,
   ] = useState("edge");
 
-  /**
-   * Load voices.
+  /*
+   * Load real voices
    */
   useEffect(() => {
+    let cancelled = false;
+
     const load = async () => {
       try {
         if (!voices.length) {
           const data =
             await listVoices();
 
-          setVoices(data);
+          if (!cancelled) {
+            setVoices(data);
+          }
         }
 
         if (user) {
-          const favoriteVoices =
+          const data =
             await getFavorites(
               user.uid
             );
 
-          setFavorites(
-            favoriteVoices
-          );
+          if (!cancelled) {
+            setFavorites(
+              data
+            );
+          }
         }
       } catch (error) {
         console.error(
@@ -114,6 +137,10 @@ export default function Voices() {
     };
 
     load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     user,
     voices.length,
@@ -121,20 +148,23 @@ export default function Voices() {
     setFavorites,
   ]);
 
-  /**
-   * Filter voices.
+  /*
+   * Search / filters
    */
   const filteredVoices =
     useMemo(() => {
+      const query =
+        search
+          .trim()
+          .toLowerCase();
+
       return voices.filter(
         (voice) => {
           const matchesSearch =
-            !search ||
+            !query ||
             `${voice.name} ${voice.locale} ${voice.provider}`
               .toLowerCase()
-              .includes(
-                search.toLowerCase()
-              );
+              .includes(query);
 
           const matchesLanguage =
             language === "all" ||
@@ -160,8 +190,8 @@ export default function Voices() {
       gender,
     ]);
 
-  /**
-   * Preview.
+  /*
+   * Browser preview
    */
   const preview = (
     voice: Voice
@@ -180,119 +210,136 @@ export default function Voices() {
     );
   };
 
-  /**
-   * Favorite.
+  /*
+   * Toggle favorite
    */
-  const handleFavorite = async (
-    voice: Voice
-  ) => {
-    if (!user) {
-      alert(
-        "Please sign in to save favorites."
-      );
-      return;
-    }
-
-    try {
-      if (favorites[voice.id]) {
-        await removeFavorite(
-          user.uid,
-          voice.id
+  const handleFavorite =
+    async (
+      voice: Voice
+    ) => {
+      if (!user) {
+        alert(
+          "Please sign in to save favorites."
         );
+        return;
+      }
 
-        toggleFavorite(
-          voice
-        );
-      } else {
-        await saveFavorite(
-          user.uid,
-          voice
-        );
+      try {
+        if (
+          favorites[voice.id]
+        ) {
+          await removeFavorite(
+            user.uid,
+            voice.id
+          );
 
-        toggleFavorite(
-          voice
+          toggleFavorite(
+            voice
+          );
+        } else {
+          await saveFavorite(
+            user.uid,
+            voice
+          );
+
+          toggleFavorite(
+            voice
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Favorite error:",
+          error
         );
       }
-    } catch (error) {
-      console.error(
-        "Favorite error:",
-        error
-      );
-    }
-  };
-
-  /**
-   * Add custom voice.
-   */
-  const addCustomVoice = async () => {
-    if (!user) {
-      alert(
-        "Please sign in first."
-      );
-      return;
-    }
-
-    if (
-      !customName.trim()
-    ) {
-      alert(
-        "Voice name is required."
-      );
-      return;
-    }
-
-    if (
-      !customId.trim()
-    ) {
-      alert(
-        "Voice ID is required."
-      );
-      return;
-    }
-
-    const customVoice: Voice = {
-      id: customId.trim(),
-      name:
-        customName.trim(),
-      language: "custom",
-      locale: "custom",
-      gender: "Neutral",
-      provider:
-        customProvider.trim() ||
-        "custom",
-      type: "custom",
-      isPopular: false,
     };
 
-    try {
-      await saveCustomVoice(
-        user.uid,
-        customVoice
-      );
+  /*
+   * Add custom voice
+   */
+  const addCustomVoice =
+    async () => {
+      if (!user) {
+        alert(
+          "Please sign in first."
+        );
+        return;
+      }
 
-      setVoices([
-        ...voices,
-        customVoice,
-      ]);
+      if (
+        !customName.trim()
+      ) {
+        alert(
+          "Voice name is required."
+        );
+        return;
+      }
 
-      setCustomName("");
-      setCustomId("");
-      setCustomProvider(
-        "edge"
-      );
+      if (
+        !customId.trim()
+      ) {
+        alert(
+          "Voice ID is required."
+        );
+        return;
+      }
 
-      setCustomOpen(false);
-    } catch (error) {
-      console.error(
-        "Custom voice error:",
-        error
-      );
+      const customVoice: Voice =
+        {
+          id:
+            customId.trim(),
 
-      alert(
-        "Unable to save custom voice."
-      );
-    }
-  };
+          name:
+            customName.trim(),
+
+          language:
+            "custom",
+
+          locale:
+            "custom",
+
+          gender:
+            "Neutral",
+
+          provider:
+            customProvider.trim() ||
+            "custom",
+
+          type:
+            "custom",
+
+          isPopular:
+            false,
+        };
+
+      try {
+        await saveCustomVoice(
+          user.uid,
+          customVoice
+        );
+
+        setVoices([
+          ...voices,
+          customVoice,
+        ]);
+
+        setCustomName("");
+        setCustomId("");
+        setCustomProvider(
+          "edge"
+        );
+        setCustomOpen(false);
+      } catch (error) {
+        console.error(
+          "Custom voice error:",
+          error
+        );
+
+        alert(
+          "Unable to save custom voice."
+        );
+      }
+    };
 
   const languages = [
     ...new Set(
@@ -349,7 +396,8 @@ export default function Voices() {
                 value={customName}
                 onChange={(event) =>
                   setCustomName(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 placeholder="My Voice"
@@ -365,7 +413,8 @@ export default function Voices() {
                 value={customId}
                 onChange={(event) =>
                   setCustomId(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 placeholder="voice-id"
@@ -378,10 +427,13 @@ export default function Voices() {
               </Label>
 
               <Input
-                value={customProvider}
+                value={
+                  customProvider
+                }
                 onChange={(event) =>
                   setCustomProvider(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 placeholder="edge"
@@ -473,7 +525,7 @@ export default function Voices() {
         </select>
       </Card>
 
-      {/* VOICES */}
+      {/* VOICE GRID */}
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {filteredVoices.map(
           (voice) => (
