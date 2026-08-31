@@ -1,4 +1,3 @@
-
 import {
   addDoc,
   collection,
@@ -17,10 +16,90 @@ import { db } from "../lib/firebase";
 import type {
   HistoryItem,
   Preferences,
+  Voice,
 } from "../types";
 
 /**
- * Save user preferences
+ * Remove undefined recursively.
+ */
+function removeUndefinedFields<T>(
+  value: T
+): T {
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      removeUndefinedFields(item)
+    ) as T;
+  }
+
+  if (
+    value !== null &&
+    typeof value === "object"
+  ) {
+    const result: Record<
+      string,
+      unknown
+    > = {};
+
+    for (const [
+      key,
+      fieldValue,
+    ] of Object.entries(
+      value as Record<string, unknown>
+    )) {
+      if (fieldValue === undefined) {
+        continue;
+      }
+
+      result[key] =
+        removeUndefinedFields(fieldValue);
+    }
+
+    return result as T;
+  }
+
+  return value;
+}
+
+/**
+ * Convert Firestore data into Voice.
+ */
+function toVoice(
+  data: Record<string, any>
+): Voice {
+  const gender =
+    data.gender === "Male" ||
+    data.gender === "Female" ||
+    data.gender === "Neutral"
+      ? data.gender
+      : "Neutral";
+
+  return {
+    id: String(data.id ?? ""),
+    name: String(data.name ?? "Unknown Voice"),
+    language: String(
+      data.language ?? data.locale ?? ""
+    ),
+    locale: String(data.locale ?? ""),
+    gender,
+    provider: String(
+      data.provider ?? "Unknown"
+    ),
+    type: String(
+      data.type ?? "custom"
+    ),
+    friendlyName:
+      data.friendlyName
+        ? String(data.friendlyName)
+        : undefined,
+    isPopular:
+      typeof data.isPopular === "boolean"
+        ? data.isPopular
+        : false,
+  };
+}
+
+/**
+ * Save user preferences.
  */
 export const savePreferences = async (
   uid: string,
@@ -29,8 +108,12 @@ export const savePreferences = async (
   await setDoc(
     doc(db, "users", uid),
     {
-      preferences,
-      updatedAt: serverTimestamp(),
+      preferences:
+        removeUndefinedFields(
+          preferences
+        ),
+      updatedAt:
+        serverTimestamp(),
     },
     {
       merge: true,
@@ -39,15 +122,14 @@ export const savePreferences = async (
 };
 
 /**
- * Save favorite voice
+ * Save favorite voice.
  */
 export const saveFavorite = async (
   uid: string,
-  voice: any
+  voice: Voice
 ) => {
-  const cleanVoice = removeUndefinedFields(
-    voice
-  );
+  const cleanVoice =
+    removeUndefinedFields(voice);
 
   await setDoc(
     doc(
@@ -59,13 +141,14 @@ export const saveFavorite = async (
     ),
     {
       ...cleanVoice,
-      createdAt: serverTimestamp(),
+      createdAt:
+        serverTimestamp(),
     }
   );
 };
 
 /**
- * Remove favorite voice
+ * Remove favorite.
  */
 export const removeFavorite = async (
   uid: string,
@@ -83,11 +166,11 @@ export const removeFavorite = async (
 };
 
 /**
- * Get favorites
+ * Get favorites.
  */
 export const getFavorites = async (
   uid: string
-) => {
+): Promise<Voice[]> => {
   const snapshot = await getDocs(
     collection(
       db,
@@ -97,16 +180,13 @@ export const getFavorites = async (
     )
   );
 
-  return snapshot.docs.map(
-    (item) => item.data()
+  return snapshot.docs.map((item) =>
+    toVoice(item.data())
   );
 };
 
 /**
- * Add history item
- *
- * Removes all undefined fields before writing
- * to Firestore.
+ * Add generation history.
  */
 export const addHistory = async (
   uid: string,
@@ -127,7 +207,8 @@ export const addHistory = async (
     ),
     {
       ...cleanItem,
-      createdAt: serverTimestamp(),
+      createdAt:
+        serverTimestamp(),
     }
   );
 
@@ -135,11 +216,11 @@ export const addHistory = async (
 };
 
 /**
- * Get generation history
+ * Get generation history.
  */
 export const getHistory = async (
   uid: string
-) => {
+): Promise<HistoryItem[]> => {
   const historyQuery = query(
     collection(
       db,
@@ -159,7 +240,8 @@ export const getHistory = async (
 
   return snapshot.docs.map(
     (document) => {
-      const data = document.data();
+      const data =
+        document.data();
 
       let createdAt =
         new Date().toISOString();
@@ -185,7 +267,7 @@ export const getHistory = async (
 };
 
 /**
- * Delete history item
+ * Delete history.
  */
 export const deleteHistory = async (
   uid: string,
@@ -203,16 +285,14 @@ export const deleteHistory = async (
 };
 
 /**
- * Save custom voice
+ * Save custom voice.
  */
 export const saveCustomVoice = async (
   uid: string,
-  voice: any
+  voice: Voice
 ) => {
   const cleanVoice =
-    removeUndefinedFields(
-      voice
-    );
+    removeUndefinedFields(voice);
 
   await setDoc(
     doc(
@@ -231,11 +311,11 @@ export const saveCustomVoice = async (
 };
 
 /**
- * Get custom voices
+ * Get custom voices.
  */
 export const getCustomVoices = async (
   uid: string
-) => {
+): Promise<Voice[]> => {
   const snapshot = await getDocs(
     collection(
       db,
@@ -245,56 +325,7 @@ export const getCustomVoices = async (
     )
   );
 
-  return snapshot.docs.map(
-    (item) => item.data()
+  return snapshot.docs.map((item) =>
+    toVoice(item.data())
   );
 };
-
-/**
- * Remove undefined values recursively
- */
-function removeUndefinedFields<T>(
-  value: T
-): T {
-  if (Array.isArray(value)) {
-    return value.map(
-      (item) =>
-        removeUndefinedFields(item)
-    ) as T;
-  }
-
-  if (
-    value !== null &&
-    typeof value === "object"
-  ) {
-    const result: Record<
-      string,
-      unknown
-    > = {};
-
-    for (const [
-      key,
-      fieldValue,
-    ] of Object.entries(
-      value as Record<
-        string,
-        unknown
-      >
-    )) {
-      if (
-        fieldValue === undefined
-      ) {
-        continue;
-      }
-
-      result[key] =
-        removeUndefinedFields(
-          fieldValue
-        );
-    }
-
-    return result as T;
-  }
-
-  return value;
-}
