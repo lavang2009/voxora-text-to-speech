@@ -1,0 +1,1 @@
+import type {TTSOptions,TTSProvider,Voice} from "../types/index.js"; export default class PiperProvider implements TTSProvider{constructor(private endpoint=process.env.PIPER_URL||""){}supports(){return Boolean(this.endpoint)}async getVoices(){return []}async generate(_o:TTSOptions){throw new Error("Piper is not configured.")}}

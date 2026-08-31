@@ -1,0 +1,6 @@
+{
+  "name":"voxora-server","private":true,"version":"1.0.0","type":"module",
+  "scripts":{"dev":"tsx watch src/server.ts","build":"tsc","start":"node dist/server.js","test":"vitest run"},
+  "dependencies":{"cloudinary":"^2.7.0","cors":"^2.8.5","dotenv":"^17.2.1","edge-tts-universal":"^1.4.0","express":"^5.1.0","express-rate-limit":"^8.0.1","firebase-admin":"^13.4.0","helmet":"^8.1.0","multer":"^2.0.2","zod":"^4.0.17"},
+  "devDependencies":{"@types/cors":"^2.8.19","@types/express":"^5.0.3","@types/multer":"^2.0.0","@types/node":"^24.3.0","tsx":"^4.19.3","typescript":"~5.9.2","vitest":"^3.2.4"}
+}

@@ -1,0 +1,2 @@
+import {Download} from "lucide-react"; import {Button} from "./ui";
+export default function AudioPlayer({url,format}:{url:string;format:string}){return <div className="rounded-2xl border border-white/10 bg-white/[.02] p-4"><audio className="w-full" controls src={url}/><div className="mt-3 flex justify-end"><a href={url} download={`voice-${Date.now()}.${format}`}><Button><Download size={15}/>Download {format.toUpperCase()}</Button></a></div></div>}

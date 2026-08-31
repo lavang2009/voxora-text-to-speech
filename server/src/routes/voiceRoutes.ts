@@ -1,0 +1,1 @@
+import {Router} from "express"; import {listVoices} from "../controllers/voiceController.js"; const r=Router();r.get("/",listVoices);export default r;

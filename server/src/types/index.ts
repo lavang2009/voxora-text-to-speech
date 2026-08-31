@@ -1,0 +1,3 @@
+export type Voice={id:string;name:string;language:string;locale:string;gender:"Male"|"Female"|"Neutral";provider:string;type:string;friendlyName?:string;isPopular?:boolean};
+export type TTSOptions={text:string;voiceId:string;language:string;speed:number;pitch:number;volume:number;format:"mp3"|"wav"};
+export interface TTSProvider{generate(o:TTSOptions):Promise<Buffer>;getVoices():Promise<Voice[]>;supports(language:string):boolean}

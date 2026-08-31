@@ -1,0 +1,2 @@
+import {Outlet} from "react-router-dom"; import Sidebar from "../components/Sidebar"; import MobileNav from "../components/MobileNav";
+export default function AppLayout(){return <div className="min-h-screen bg-[#080b14] lg:flex"><Sidebar/><main className="min-w-0 flex-1 pb-20 lg:pb-0"><Outlet/></main><MobileNav/></div>}

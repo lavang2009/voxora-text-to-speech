@@ -1,0 +1,1 @@
+import {Router} from "express"; import {requireAuth} from "../middleware/auth.js"; import {generate} from "../controllers/ttsController.js"; const r=Router();r.post("/generate",requireAuth,generate);export default r;

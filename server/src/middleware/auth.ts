@@ -1,0 +1,3 @@
+import type {Request,Response,NextFunction} from "express"; import {adminAuth} from "../config/firebaseAdmin.js";
+export type AuthedRequest=Request&{uid?:string};
+export async function requireAuth(req:AuthedRequest,res:Response,next:NextFunction){try{const h=req.headers.authorization;if(!h?.startsWith("Bearer "))return res.status(401).json({success:false,error:{code:"UNAUTHENTICATED",message:"Please sign in."}});const t=await adminAuth.verifyIdToken(h.slice(7));req.uid=t.uid;next()}catch{return res.status(401).json({success:false,error:{code:"UNAUTHENTICATED",message:"Invalid or expired session."}})}}

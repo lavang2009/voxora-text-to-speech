@@ -1,0 +1,1 @@
+import EdgeTTSProvider from "../providers/EdgeTTSProvider.js"; const edge=new EdgeTTSProvider(); export const provider=edge;

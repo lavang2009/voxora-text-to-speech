@@ -1,0 +1,3 @@
+import {NavLink} from "react-router-dom"; import {Home,Mic2,History,Heart,User} from "lucide-react";
+const x=[["/dashboard","Home",Home],["/studio","Studio",Mic2],["/history","History",History],["/favorites","Favorites",Heart],["/profile","Profile",User]] as const;
+export default function MobileNav(){return <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-5 border-t border-white/10 bg-[#080b14]/95 p-2 backdrop-blur-xl lg:hidden">{x.map(([to,t,I])=><NavLink key={to} to={to} className={({isActive})=>`grid place-items-center gap-1 rounded-xl py-1 text-[10px] ${isActive?"text-white":"text-slate-500"}`}><I size={18}/>{t}</NavLink>)}</nav>}

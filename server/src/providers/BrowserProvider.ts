@@ -1,0 +1,1 @@
+import type {TTSOptions,TTSProvider,Voice} from "../types/index.js"; export default class BrowserProvider implements TTSProvider{supports(){return false}async getVoices(){return [] as Voice[]}async generate(_o:TTSOptions){throw new Error("Browser provider is preview-only.")}}

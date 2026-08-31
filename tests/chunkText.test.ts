@@ -1,0 +1,2 @@
+import {describe,it,expect} from "vitest"; import {chunkText} from "../server/src/utils/chunkText";
+describe("chunkText",()=>it("splits long text",()=>{const x=chunkText(Array(1000).fill("hello world.").join(" "),200);expect(x.length).toBeGreaterThan(1)}));
