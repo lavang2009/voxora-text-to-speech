@@ -1,3 +1,4 @@
+
 import {
   useEffect,
 } from "react";
@@ -20,17 +21,34 @@ import {
 import type { Voice } from "../types";
 
 export default function Favorites() {
-  const {
-    user,
-    favorites,
-    setFavorites,
-    toggleFavorite,
-  } = useAppStore();
+  const user =
+    useAppStore(
+      (state) => state.user
+    );
+
+  const favorites =
+    useAppStore(
+      (state) => state.favorites
+    );
+
+  const setFavorites =
+    useAppStore(
+      (state) =>
+        state.setFavorites
+    );
+
+  const toggleFavorite =
+    useAppStore(
+      (state) =>
+        state.toggleFavorite
+    );
 
   useEffect(() => {
     if (!user) {
       return;
     }
+
+    let cancelled = false;
 
     const loadFavorites =
       async () => {
@@ -40,9 +58,9 @@ export default function Favorites() {
               user.uid
             );
 
-          setFavorites(
-            data
-          );
+          if (!cancelled) {
+            setFavorites(data);
+          }
         } catch (error) {
           console.error(
             "Favorites loading error:",
@@ -52,6 +70,10 @@ export default function Favorites() {
       };
 
     loadFavorites();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     user,
     setFavorites,
@@ -74,15 +96,14 @@ export default function Favorites() {
       voice.locale;
 
     speechSynthesis.cancel();
+
     speechSynthesis.speak(
       utterance
     );
   };
 
   const handleRemove =
-    async (
-      voice: Voice
-    ) => {
+    async (voice: Voice) => {
       if (!user) {
         return;
       }
@@ -114,30 +135,31 @@ export default function Favorites() {
         Favorite voices
       </h1>
 
-      <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {favoriteVoices.map(
-          (voice) => (
-            <VoiceCard
-              key={voice.id}
-              voice={voice}
-              fav={true}
-              onFavorite={() =>
-                handleRemove(
-                  voice
-                )
-              }
-              onPreview={() =>
-                preview(
-                  voice
-                )
-              }
-            />
-          )
-        )}
-      </div>
-
-      {!favoriteVoices.length && (
-        <Card className="mt-5 p-12 text-center text-slate-500">
+      {favoriteVoices.length >
+      0 ? (
+        <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {favoriteVoices.map(
+            (voice) => (
+              <VoiceCard
+                key={voice.id}
+                voice={voice}
+                fav={true}
+                onFavorite={() =>
+                  handleRemove(
+                    voice
+                  )
+                }
+                onPreview={() =>
+                  preview(
+                    voice
+                  )
+                }
+              />
+            )
+          )}
+        </div>
+      ) : (
+        <Card className="mt-7 p-12 text-center text-slate-500">
           No favorite voices yet.
         </Card>
       )}
