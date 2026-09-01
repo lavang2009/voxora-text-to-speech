@@ -4,28 +4,34 @@ import os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import ffmpegPath from "ffmpeg-static";
-import ffprobePackage from "@derhuerst/ffprobe-static";
+import ffmpegStatic from "ffmpeg-static";
+import ffprobeStatic from "@derhuerst/ffprobe-static";
 
 const exec = promisify(execFile);
 
 /*
- * Static binaries bundled through npm.
- *
- * Local Windows:
- *   ffmpeg.exe / ffprobe.exe
- *
- * Vercel Linux:
- *   Linux binary from the package
+ * ffmpeg-static có thể export kiểu:
+ * string | null
  */
 const FFMPEG_PATH =
-  ffmpegPath || "ffmpeg";
+  typeof ffmpegStatic === "string"
+    ? ffmpegStatic
+    : null;
 
+/*
+ * @derhuerst/ffprobe-static export object
+ * chứa đường dẫn binary.
+ */
 const FFPROBE_PATH =
-  ffprobePackage.path || "ffprobe";
+  typeof ffprobeStatic === "object" &&
+  ffprobeStatic !== null &&
+  "path" in ffprobeStatic &&
+  typeof ffprobeStatic.path === "string"
+    ? ffprobeStatic.path
+    : null;
 
-function ensureBinary(
-  value: string | null | undefined,
+function requireBinary(
+  value: string | null,
   name: string
 ): string {
   if (!value) {
@@ -38,7 +44,7 @@ function ensureBinary(
 }
 
 /**
- * Merge MP3 buffers into one MP3.
+ * Merge multiple MP3 buffers.
  */
 export async function mergeMp3(
   buffers: Buffer[]
@@ -120,7 +126,7 @@ export async function mergeMp3(
     );
 
     const executable =
-      ensureBinary(
+      requireBinary(
         FFMPEG_PATH,
         "FFmpeg"
       );
@@ -132,24 +138,19 @@ export async function mergeMp3(
         "-loglevel",
         "error",
         "-y",
-
         "-f",
         "concat",
-
         "-safe",
         "0",
-
         "-i",
         listFile,
-
         "-c",
         "copy",
-
         outputFile,
       ],
       {
         maxBuffer:
-          1024 * 1024 * 10,
+          10 * 1024 * 1024,
       }
     );
 
@@ -215,7 +216,7 @@ export async function mp3ToWav(
     );
 
     const executable =
-      ensureBinary(
+      requireBinary(
         FFMPEG_PATH,
         "FFmpeg"
       );
@@ -227,21 +228,17 @@ export async function mp3ToWav(
         "-loglevel",
         "error",
         "-y",
-
         "-i",
         inputFile,
-
         "-ar",
         "44100",
-
         "-ac",
         "2",
-
         outputFile,
       ],
       {
         maxBuffer:
-          1024 * 1024 * 10,
+          10 * 1024 * 1024,
       }
     );
 
@@ -269,10 +266,10 @@ export async function mp3ToWav(
 }
 
 /**
- * Get audio duration.
+ * Detect duration with ffprobe.
  *
  * If ffprobe is unavailable,
- * return 0 instead of breaking TTS.
+ * return 0 without failing TTS.
  */
 export async function durationSeconds(
   buffer: Buffer,
@@ -310,7 +307,7 @@ export async function durationSeconds(
 
     try {
       const executable =
-        ensureBinary(
+        requireBinary(
           FFPROBE_PATH,
           "FFprobe"
         );
@@ -322,13 +319,10 @@ export async function durationSeconds(
         [
           "-v",
           "error",
-
           "-show_entries",
           "format=duration",
-
           "-of",
           "default=noprint_wrappers=1:nokey=1",
-
           filePath,
         ],
         {
@@ -352,12 +346,10 @@ export async function durationSeconds(
       }
 
       return 0;
-    } catch (
-      probeError
-    ) {
+    } catch (error: any) {
       console.warn(
-        "FFprobe failed. Duration set to 0.",
-        probeError
+        "Unable to detect duration with ffprobe:",
+        error?.message || error
       );
 
       return 0;
