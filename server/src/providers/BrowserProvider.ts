@@ -1,12 +1,6 @@
-import type {
-  TTSOptions,
-  TTSProvider,
-  Voice,
-} from "../types/index.js";
+import type { TTSOptions, TTSProvider, Voice } from "../types/index.js";
 
-export default class BrowserProvider
-  implements TTSProvider
-{
+export default class BrowserProvider implements TTSProvider {
   supports(_language: string): boolean {
     return false;
   }
@@ -15,11 +9,9 @@ export default class BrowserProvider
     return [];
   }
 
-  async generate(
-    _options: TTSOptions
-  ): Promise<Buffer> {
+  async generate(_options: TTSOptions): Promise<Buffer> {
     throw new Error(
-      "Browser TTS is preview-only and cannot render server audio."
+      "Browser TTS is preview-only and cannot render server audio.",
     );
   }
 }

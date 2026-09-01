@@ -8,7 +8,7 @@ import { z } from "zod";
 import { adminAuth } from "../../src/config/firebaseAdmin.js";
 
 import {
-  provider,
+  resolveVoice,
 } from "../../src/services/providerRegistry.js";
 
 import {
@@ -294,51 +294,20 @@ export default async function handler(
     /*
      * Get real voices
      */
-    let voices;
+    const resolved = await resolveVoice(options.voiceId);
 
-    try {
-      voices =
-        await provider.getVoices();
-    } catch (error) {
-      console.error(
-        "Voice provider error:",
-        error
-      );
-
-      return res.status(503).json({
-        success: false,
-        error: {
-          code:
-            "VOICE_PROVIDER_UNAVAILABLE",
-          message:
-            "The voice provider is temporarily unavailable.",
-        },
-      });
-    }
-
-    /*
-     * Find voice
-     */
-    const selectedVoice =
-      voices.find(
-        (voice) =>
-          voice.id ===
-          options.voiceId
-      );
-
-    if (
-      !selectedVoice
-    ) {
+    if (!resolved) {
       return res.status(400).json({
         success: false,
         error: {
-          code:
-            "VOICE_NOT_FOUND",
-          message:
-            "Voice is not available.",
+          code: "VOICE_NOT_FOUND",
+          message: "Voice is not available.",
         },
       });
     }
+
+    const selectedVoice = resolved.voice;
+    const selectedProvider = resolved.provider;
 
     /*
      * Split text
@@ -410,7 +379,7 @@ export default async function handler(
           );
 
           const audio =
-            await provider.generate(
+            await selectedProvider.generate(
               {
                 ...options,
 
@@ -559,7 +528,7 @@ export default async function handler(
 
     try {
       output =
-        await provider.generate(
+        await selectedProvider.generate(
           {
             ...options,
 
