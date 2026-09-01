@@ -1,3 +1,42 @@
-import type {Request,Response} from "express"; import {provider} from "../services/providerRegistry.js";
-let cache:any[]=[];let at=0;
-export async function listVoices(_req:Request,res:Response){try{if(!cache.length||Date.now()-at>900000){cache=await provider.getVoices();at=Date.now()}res.json({success:true,data:cache})}catch{return res.status(503).json({success:false,error:{code:"VOICE_UNAVAILABLE",message:"Voice provider is temporarily unavailable."}})}}
+import type {
+  Request,
+  Response,
+} from "express";
+
+import {
+  getAllVoices,
+} from "../services/providerRegistry.js";
+
+export async function listVoices(
+  _req: Request,
+  res: Response,
+) {
+  try {
+    const voices =
+      await getAllVoices();
+
+    return res.json({
+      success: true,
+      data: voices,
+      meta: {
+        total:
+          voices.length,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Voice discovery failed:",
+      error,
+    );
+
+    return res.status(503).json({
+      success: false,
+      error: {
+        code:
+          "VOICE_UNAVAILABLE",
+        message:
+          "Voice providers are temporarily unavailable.",
+      },
+    });
+  }
+}

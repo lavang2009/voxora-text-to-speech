@@ -1,0 +1,19 @@
+services:
+  piper:
+    build:
+      context: ./piper-service
+    restart: unless-stopped
+    ports:
+      - "5100:5100"
+    environment:
+      PIPER_MODELS_DIR: /models
+      PIPER_CATALOG_URL: https://huggingface.co/rhasspy/piper-voices/raw/main/voices.json
+      PIPER_AUTH_TOKEN: ${PIPER_AUTH_TOKEN:-}
+      PIPER_USE_CUDA: ${PIPER_USE_CUDA:-false}
+      PIPER_MAX_TEXT_CHARS: ${PIPER_MAX_TEXT_CHARS:-12000}
+      PORT: 5100
+    volumes:
+      - piper_models:/models
+
+volumes:
+  piper_models:

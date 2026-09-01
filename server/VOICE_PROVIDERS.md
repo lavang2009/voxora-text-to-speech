@@ -1,44 +1,45 @@
 # Voxora Voice Providers
 
 ## Edge TTS
-The default provider fetches the complete voice list from the Microsoft Edge TTS voice service using `VoicesManager.create().find({})`.
-Voice IDs are never invented. The API marks a curated set of returned voices/locales as `isPopular` only for sorting/filtering.
+
+The default online provider fetches the complete voice list from the Microsoft Edge TTS service using the provider library.
+
+Voice IDs are never invented.
 
 ## Piper
-Piper is optional. Set `PIPER_URL` to a separate Piper HTTP service that exposes:
+
+Voxora now supports a real self-hosted Piper provider.
+
+Set:
+
+```env
+PIPER_URL=https://your-piper-service.example.com
+PIPER_AUTH_TOKEN=your-secret-token
+```
+
+The Piper service exposes:
 
 - `GET /voices`
+- `GET /all-voices`
 - `POST /tts`
+- `GET /health`
 
-Expected `/voices` response:
+The service uses the official Piper voice catalog and downloads a requested model only when it is first used.
 
-```json
-{
-  "data": [
-    {
-      "id": "model-id",
-      "name": "Model name",
-      "locale": "vi-VN",
-      "gender": "Female",
-      "language": "vi",
-      "isPopular": true
-    }
-  ]
-}
+### Voice catalog
+
+Each Piper model/quality variant is exposed as a voice. Multi-speaker models are expanded into individual speaker entries.
+
+Example:
+
+```text
+piper:vi_VN-vivos-x_low#speaker=0
+piper:vi_VN-vivos-x_low#speaker=1
+...
 ```
 
-Expected `/tts` request body:
+This allows a multi-speaker model to provide many selectable speaker voices.
 
-```json
-{
-  "text": "Hello",
-  "voiceId": "model-id",
-  "language": "vi-VN",
-  "speed": 1,
-  "pitch": 0,
-  "volume": 1,
-  "format": "mp3"
-}
-```
+## Licensing
 
-The registry automatically merges Edge TTS and Piper voices.
+The current OHF-Voice Piper engine is GPL-3.0. Voice model licenses vary. Check each model's MODEL_CARD before public or commercial use.

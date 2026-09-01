@@ -2,7 +2,7 @@ import type { Response } from "express";
 import { z } from "zod";
 
 import type { AuthedRequest } from "../middleware/auth.js";
-import { provider } from "../services/providerRegistry.js";
+import { resolveVoice } from "../services/providerRegistry.js";
 import { chunkText } from "../utils/chunkText.js";
 import {
   mergeMp3,
@@ -99,66 +99,36 @@ export async function generate(
     }
 
     /*
-     * 3. Get provider voices
+     * 3-5. Resolve the selected voice against
+     * the aggregated provider registry.
      */
-    let voices;
-
-    try {
-      voices = await provider.getVoices();
-    } catch (error) {
-      console.error(
-        "Voice provider list error:",
-        error
+    const resolved =
+      await resolveVoice(
+        options.voiceId,
       );
 
-      return res.status(503).json({
-        success: false,
-        error: {
-          code: "VOICE_PROVIDER_UNAVAILABLE",
-          message:
-            "The voice provider is temporarily unavailable.",
-        },
-      });
-    }
-
-    /*
-     * 4. Find requested voice
-     */
-    const selectedVoice = voices.find(
-      (voice) => voice.id === options.voiceId
-    );
-
-    if (!selectedVoice) {
+    if (!resolved) {
       console.error(
         "Voice not found:",
-        options.voiceId
+        options.voiceId,
       );
 
       return res.status(400).json({
         success: false,
         error: {
-          code: "VOICE_NOT_FOUND",
+          code:
+            "VOICE_NOT_FOUND",
           message:
-            "Voice is not available. Please select another voice.",
+            "Voice is not available.",
         },
       });
     }
 
-    /*
-     * 5. Check language support
-     */
-    if (
-      selectedVoice.locale &&
-      options.language &&
-      selectedVoice.locale.toLowerCase() !==
-        options.language.toLowerCase()
-    ) {
-      console.warn(
-        "Language mismatch:",
-        selectedVoice.locale,
-        options.language
-      );
-    }
+    const selectedVoice =
+      resolved.voice;
+
+    const selectedProvider =
+      resolved.provider;
 
     /*
      * 6. Split long text
@@ -193,7 +163,7 @@ export async function generate(
       );
 
       try {
-        const buffer = await provider.generate({
+        const buffer = await selectedProvider.generate({
           text: chunks[i],
           voiceId: selectedVoice.id,
           language: selectedVoice.locale,
