@@ -1,4 +1,3 @@
-
 import {
   useEffect,
   useMemo,
@@ -8,8 +7,12 @@ import {
 import {
   Upload,
   Play,
+  Square,
   WandSparkles,
   Trash2,
+  Search,
+  Heart,
+  Star,
 } from "lucide-react";
 
 import {
@@ -27,6 +30,8 @@ import { auth } from "../lib/firebase";
 
 import {
   addHistory,
+  removeFavorite,
+  saveFavorite,
 } from "../services/firestoreService";
 
 import {
@@ -34,64 +39,79 @@ import {
   listVoices,
 } from "../services/ttsService";
 
+import type { Voice } from "../types";
+
 const MAX = 20000;
+
+type VoiceGender =
+  | "all"
+  | "Male"
+  | "Female"
+  | "Neutral";
+
+type VoiceFilter =
+  | "all"
+  | "popular"
+  | "favorites";
 
 export default function Studio() {
   const {
     user,
     voices,
     setVoices,
+    favorites,
+    toggleFavorite,
     preferences,
   } = useAppStore();
 
-  const [text, setText] =
-    useState(
-      localStorage.getItem(
-        "voxora-draft"
-      ) || ""
-    );
+  const [text, setText] = useState(
+    localStorage.getItem("voxora-draft") || ""
+  );
 
-  const [voice, setVoice] =
-    useState(
-      preferences.defaultVoice || ""
-    );
+  const [voice, setVoice] = useState(
+    preferences.defaultVoice || ""
+  );
 
-  const [lang, setLang] =
-    useState(
-      preferences.defaultLanguage ||
-        "vi-VN"
-    );
+  const [lang, setLang] = useState(
+    preferences.defaultLanguage || "vi-VN"
+  );
 
-  const [speed, setSpeed] =
-    useState(1);
+  const [speed, setSpeed] = useState(
+    preferences.defaultSpeed || 1
+  );
 
-  const [pitch, setPitch] =
-    useState(0);
+  const [pitch, setPitch] = useState(
+    preferences.defaultPitch || 0
+  );
 
-  const [volume, setVolume] =
-    useState(1);
+  const [volume, setVolume] = useState(
+    preferences.defaultVolume ?? 1
+  );
 
-  const [format, setFormat] =
-    useState<"mp3" | "wav">(
-      preferences.defaultFormat ||
-        "mp3"
-    );
+  const [format, setFormat] = useState<
+    "mp3" | "wav"
+  >(
+    preferences.defaultFormat || "mp3"
+  );
 
-  const [audio, setAudio] =
-    useState("");
-
-  const [busy, setBusy] =
-    useState(false);
-
-  const [err, setErr] =
-    useState("");
-
+  const [audio, setAudio] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
   const [historySaved, setHistorySaved] =
     useState(false);
 
-  /*
-   * Auto-save draft
-   */
+  const [voiceSearch, setVoiceSearch] =
+    useState("");
+
+  const [voiceGender, setVoiceGender] =
+    useState<VoiceGender>("all");
+
+  const [voiceFilter, setVoiceFilter] =
+    useState<VoiceFilter>("all");
+
+  const [voiceLanguage, setVoiceLanguage] =
+    useState("all");
+
   useEffect(() => {
     localStorage.setItem(
       "voxora-draft",
@@ -99,95 +119,77 @@ export default function Studio() {
     );
   }, [text]);
 
-  /*
-   * Load provider voices
-   */
   useEffect(() => {
     let mounted = true;
 
-    const loadVoices =
-      async () => {
-        try {
-          const data =
-            await listVoices();
+    const loadVoices = async () => {
+      try {
+        const data = await listVoices();
 
-          if (
-            !mounted ||
-            !Array.isArray(data) ||
-            data.length === 0
-          ) {
-            return;
-          }
-
-          setVoices(data);
-
-          /*
-           * Ưu tiên voice tiếng Việt.
-           */
-          const vietnameseVoices =
-            data.filter(
-              (item: any) =>
-                item.locale ===
-                "vi-VN"
-            );
-
-          /*
-           * Ưu tiên voice mặc định
-           * nếu vẫn còn tồn tại.
-           */
-          const preferenceVoice =
-            data.find(
-              (item: any) =>
-                item.id ===
-                preferences.defaultVoice
-            );
-
-          /*
-           * Voice theo language
-           */
-          const languageVoice =
-            data.find(
-              (item: any) =>
-                item.locale ===
-                lang
-            );
-
-          const preferred =
-            preferenceVoice ||
-            languageVoice ||
-            vietnameseVoices[0] ||
-            data[0];
-
-          const exists =
-            data.some(
-              (item: any) =>
-                item.id === voice
-            );
-
-          if (!exists) {
-            setVoice(
-              preferred.id
-            );
-
-            setLang(
-              preferred.locale
-            );
-          }
-        } catch (error) {
-          console.error(
-            "Voice loading error:",
-            error
-          );
-
-          if (mounted) {
-            setErr(
-              "Unable to load voices."
-            );
-          }
+        if (
+          !mounted ||
+          !Array.isArray(data) ||
+          data.length === 0
+        ) {
+          return;
         }
-      };
 
-    if (!voices.length) {
+        setVoices(data);
+
+        const current = data.find(
+          (item: Voice) =>
+            item.id === voice
+        );
+
+        if (current) {
+          setLang(current.locale);
+          return;
+        }
+
+        const saved = data.find(
+          (item: Voice) =>
+            item.id ===
+            preferences.defaultVoice
+        );
+
+        if (saved) {
+          setVoice(saved.id);
+          setLang(saved.locale);
+          return;
+        }
+
+        const vietnamese = data.find(
+          (item: Voice) =>
+            item.locale === "vi-VN"
+        );
+
+        if (vietnamese) {
+          setVoice(vietnamese.id);
+          setLang(vietnamese.locale);
+          return;
+        }
+
+        const first = data[0];
+
+        if (first) {
+          setVoice(first.id);
+          setLang(first.locale);
+        }
+      } catch (error) {
+        console.error(
+          "Voice loading error:",
+          error
+        );
+
+        if (mounted) {
+          setErr(
+            "Unable to load voices."
+          );
+        }
+      }
+    };
+
+    if (voices.length === 0) {
       loadVoices();
     }
 
@@ -197,36 +199,151 @@ export default function Studio() {
   }, [
     voices.length,
     setVoices,
-    preferences.defaultVoice,
-    lang,
     voice,
+    preferences.defaultVoice,
   ]);
 
-  /*
-   * Available voices for selected language
-   */
-  const available =
-    useMemo(() => {
-      return voices.filter(
-        (item) =>
-          item.locale === lang
-      );
-    }, [voices, lang]);
+  const languages = useMemo(() => {
+    return [
+      ...new Set(
+        voices.map(
+          (item) => item.locale
+        )
+      ),
+    ].sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [voices]);
 
-  /*
-   * Current selected voice
-   */
   const chosen =
     voices.find(
-      (item) =>
-        item.id === voice
-    ) ||
-    available[0] ||
-    voices[0];
+      (item) => item.id === voice
+    ) || null;
 
   /*
-   * Import TXT / DOCX
+   * Search trên TOÀN BỘ voice.
+   * Không còn giới hạn theo lang.
    */
+  const filteredVoices = useMemo(() => {
+    const search =
+      voiceSearch
+        .trim()
+        .toLowerCase();
+
+    const result = voices.filter(
+      (item) => {
+        const matchesSearch =
+          !search ||
+          `${item.name} ${item.id} ${item.locale} ${item.provider}`
+            .toLowerCase()
+            .includes(search);
+
+        const matchesGender =
+          voiceGender === "all" ||
+          item.gender === voiceGender;
+
+        const matchesLanguage =
+          voiceLanguage === "all" ||
+          item.locale === voiceLanguage;
+
+        const matchesFilter =
+          voiceFilter === "all"
+            ? true
+            : voiceFilter === "popular"
+              ? item.isPopular === true
+              : Boolean(
+                  favorites[item.id]
+                );
+
+        return (
+          matchesSearch &&
+          matchesGender &&
+          matchesLanguage &&
+          matchesFilter
+        );
+      }
+    );
+
+    return result.sort((a, b) => {
+      if (
+        Boolean(a.isPopular) !==
+        Boolean(b.isPopular)
+      ) {
+        return a.isPopular ? -1 : 1;
+      }
+
+      if (
+        a.locale === "vi-VN" &&
+        b.locale !== "vi-VN"
+      ) {
+        return -1;
+      }
+
+      if (
+        b.locale === "vi-VN" &&
+        a.locale !== "vi-VN"
+      ) {
+        return 1;
+      }
+
+      return `${a.locale}${a.name}`.localeCompare(
+        `${b.locale}${b.name}`
+      );
+    });
+  }, [
+    voices,
+    voiceSearch,
+    voiceGender,
+    voiceLanguage,
+    voiceFilter,
+    favorites,
+  ]);
+
+  const selectVoice = (selected: Voice) => {
+    setVoice(selected.id);
+    setLang(selected.locale);
+  };
+
+  const handleFavorite = async (
+    selected: Voice
+  ) => {
+    if (!user) {
+      setErr(
+        "Please sign in to save favorites."
+      );
+      return;
+    }
+
+    try {
+      if (
+        favorites[selected.id]
+      ) {
+        await removeFavorite(
+          user.uid,
+          selected.id
+        );
+
+        toggleFavorite(selected);
+      } else {
+        await saveFavorite(
+          user.uid,
+          selected
+        );
+
+        toggleFavorite(selected);
+      }
+    } catch (error) {
+      console.error(
+        "Favorite error:",
+        error
+      );
+
+      setErr(
+        "Unable to update favorite."
+      );
+    }
+  };
+
   const importFile = async (
     file: File
   ) => {
@@ -243,16 +360,11 @@ export default function Studio() {
     }
 
     try {
-      const filename =
+      const fileName =
         file.name.toLowerCase();
 
-      /*
-       * TXT
-       */
       if (
-        filename.endsWith(
-          ".txt"
-        )
+        fileName.endsWith(".txt")
       ) {
         const content =
           await file.text();
@@ -265,27 +377,17 @@ export default function Studio() {
         }
 
         setText(
-          content.slice(
-            0,
-            MAX
-          )
+          content.slice(0, MAX)
         );
 
         return;
       }
 
-      /*
-       * DOCX
-       */
       if (
-        filename.endsWith(
-          ".docx"
-        )
+        fileName.endsWith(".docx")
       ) {
         const mammoth =
-          await import(
-            "mammoth"
-          );
+          await import("mammoth");
 
         const result =
           await mammoth.extractRawText(
@@ -314,9 +416,7 @@ export default function Studio() {
         return;
       }
 
-      setErr(
-        "Use TXT or DOCX."
-      );
+      setErr("Use TXT or DOCX.");
     } catch (error) {
       console.error(
         "Import error:",
@@ -329,12 +429,6 @@ export default function Studio() {
     }
   };
 
-  /*
-   * Browser voice preview.
-   *
-   * This is preview only.
-   * Actual Generate uses backend TTS.
-   */
   const preview = () => {
     setErr("");
 
@@ -357,57 +451,26 @@ export default function Studio() {
         text
       );
 
+    utterance.lang =
+      chosen.locale;
+
     utterance.rate = speed;
-
-    utterance.pitch =
-      Math.max(
-        0.1,
-        1 + pitch / 20
-      );
-
+    utterance.pitch = Math.max(
+      0.1,
+      1 + pitch / 20
+    );
     utterance.volume = volume;
 
-    /*
-     * Try to find a browser voice
-     * matching selected locale.
-     */
-    const browserVoices =
-      speechSynthesis.getVoices();
-
-    const browserVoice =
-      browserVoices.find(
-        (item) =>
-          item.lang
-            .toLowerCase()
-            .startsWith(
-              chosen.locale
-                .toLowerCase()
-                .split("-")[0]
-            )
-      );
-
-    if (browserVoice) {
-      utterance.voice =
-        browserVoice;
-    }
-
     speechSynthesis.cancel();
-
     speechSynthesis.speak(
       utterance
     );
   };
 
-  /*
-   * Stop preview
-   */
   const stopPreview = () => {
     speechSynthesis.cancel();
   };
 
-  /*
-   * Clear editor
-   */
   const clearText = () => {
     stopPreview();
 
@@ -421,44 +484,24 @@ export default function Studio() {
     );
   };
 
-  /*
-   * Change language
-   */
-  const changeLanguage = (
-    newLanguage: string
-  ) => {
-    setLang(newLanguage);
-
-    const firstVoice =
-      voices.find(
-        (item) =>
-          item.locale ===
-          newLanguage
-      );
-
-    setVoice(
-      firstVoice?.id || ""
-    );
-  };
-
-  /*
-   * Generate actual audio
-   */
   const generate = async () => {
     setErr("");
     setHistorySaved(false);
 
     if (!user) {
+      setErr("Please sign in.");
+      return;
+    }
+
+    if (!auth.currentUser) {
       setErr(
-        "Please sign in."
+        "Your session has expired. Please sign in again."
       );
       return;
     }
 
     if (!text.trim()) {
-      setErr(
-        "Enter some text."
-      );
+      setErr("Enter some text.");
       return;
     }
 
@@ -476,40 +519,19 @@ export default function Studio() {
       return;
     }
 
-    if (!auth.currentUser) {
-      setErr(
-        "Your session has expired. Please sign in again."
-      );
-      return;
-    }
-
     setBusy(true);
 
     try {
-      /*
-       * Make sure Firebase token exists.
-       */
-      const token =
-        await auth.currentUser.getIdToken(
-          true
-        );
+      await auth.currentUser.getIdToken(
+        true
+      );
 
-      if (!token) {
-        throw new Error(
-          "Unable to authenticate with the server."
-        );
-      }
-
-      /*
-       * Backend TTS
-       */
       const result =
         await generateSpeech(
           {
             text,
             voiceId: chosen.id,
-            language:
-              chosen.locale,
+            language: chosen.locale,
             speed,
             pitch,
             volume,
@@ -521,12 +543,6 @@ export default function Studio() {
             )
         );
 
-      /*
-       * VERY IMPORTANT:
-       *
-       * Audio is considered successful
-       * at this point.
-       */
       if (
         !result ||
         !result.url
@@ -536,26 +552,16 @@ export default function Studio() {
         );
       }
 
-      setAudio(
-        result.url
-      );
+      /*
+       * Hiển thị audio NGAY LẬP TỨC.
+       */
+      setAudio(result.url);
 
       /*
-       * Save history separately.
-       *
-       * Firestore failure must never
-       * make audio generation fail.
+       * History độc lập với Generate.
        */
       try {
-        const historyItem: {
-          textPreview: string;
-          voiceId: string;
-          voiceName: string;
-          language: string;
-          format: string;
-          duration: number;
-          audioUrl?: string;
-        } = {
+        const historyItem: any = {
           textPreview:
             text.slice(0, 140),
 
@@ -576,14 +582,8 @@ export default function Studio() {
             ) || 0,
         };
 
-        /*
-         * Only add audioUrl if it
-         * actually exists.
-         */
         if (
-          result.audioUrl &&
-          typeof result.audioUrl ===
-            "string"
+          result.audioUrl
         ) {
           historyItem.audioUrl =
             result.audioUrl;
@@ -594,25 +594,13 @@ export default function Studio() {
           historyItem
         );
 
-        setHistorySaved(
-          true
-        );
+        setHistorySaved(true);
       } catch (
         historyError
       ) {
         console.error(
           "History save failed:",
           historyError
-        );
-
-        /*
-         * Do NOT remove audio.
-         *
-         * User can still listen
-         * and download it.
-         */
-        setHistorySaved(
-          false
         );
       }
     } catch (error: any) {
@@ -654,8 +642,6 @@ export default function Studio() {
 
   return (
     <div className="mx-auto max-w-7xl p-4 md:p-8">
-
-      {/* HEADER */}
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-widest text-violet-300">
@@ -667,13 +653,11 @@ export default function Studio() {
           </h1>
 
           <p className="mt-2 text-sm text-slate-500">
-            Turn your text into
-            real downloadable
-            audio.
+            Turn your text into real
+            downloadable audio.
           </p>
         </div>
 
-        {/* IMPORT */}
         <label>
           <input
             hidden
@@ -681,15 +665,13 @@ export default function Studio() {
             accept=".txt,.docx"
             onChange={(event) => {
               const file =
-                event.target
-                  .files?.[0];
+                event.target.files?.[0];
 
               if (file) {
                 importFile(file);
               }
 
-              event.target.value =
-                "";
+              event.target.value = "";
             }}
           />
 
@@ -700,16 +682,10 @@ export default function Studio() {
         </label>
       </div>
 
-      {/* MAIN */}
-      <div className="grid gap-5 xl:grid-cols-[1fr_350px]">
-
-        {/* EDITOR */}
+      <div className="grid gap-5 xl:grid-cols-[1fr_390px]">
         <Card className="p-4 md:p-6">
-
           <div className="flex items-center justify-between gap-3">
-            <Label>
-              Script
-            </Label>
+            <Label>Script</Label>
 
             <span className="text-right text-xs text-slate-600">
               {wordCount} words ·{" "}
@@ -729,16 +705,13 @@ export default function Studio() {
             placeholder="Write your script here..."
           />
 
-          {/* TEXT STATS */}
           <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-600">
             <span>
-              Characters:{" "}
-              {text.length}
+              Characters: {text.length}
             </span>
 
             <span>
-              Words:{" "}
-              {wordCount}
+              Words: {wordCount}
             </span>
 
             <span>
@@ -747,9 +720,7 @@ export default function Studio() {
             </span>
           </div>
 
-          {/* ACTIONS */}
           <div className="mt-4 flex flex-wrap gap-2">
-
             <Button
               variant="outline"
               onClick={preview}
@@ -762,8 +733,8 @@ export default function Studio() {
             <Button
               variant="outline"
               onClick={stopPreview}
-              disabled={busy}
             >
+              <Square size={15} />
               Stop
             </Button>
 
@@ -787,9 +758,7 @@ export default function Studio() {
               }
               onClick={generate}
             >
-              <WandSparkles
-                size={15}
-              />
+              <WandSparkles size={15} />
 
               {busy
                 ? "Rendering..."
@@ -797,22 +766,19 @@ export default function Studio() {
             </Button>
           </div>
 
-          {/* ERROR */}
           {err && (
             <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-200">
               {err}
             </div>
           )}
 
-          {/* HISTORY STATUS */}
           {historySaved && (
             <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-300">
-              Audio generated and
-              saved to your history.
+              Audio generated and saved
+              to your history.
             </div>
           )}
 
-          {/* AUDIO */}
           {audio && (
             <div className="mt-5">
               <AudioPlayer
@@ -823,10 +789,149 @@ export default function Studio() {
           )}
         </Card>
 
-        {/* SETTINGS */}
-        <Card className="space-y-6 p-5">
+        <Card className="space-y-5 p-5">
+          {chosen && (
+            <div className="rounded-2xl border border-violet-400/20 bg-violet-500/5 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs uppercase tracking-wider text-violet-300">
+                    Selected voice
+                  </div>
 
-          {/* LANGUAGE */}
+                  <div className="mt-2 truncate font-bold">
+                    {chosen.name}
+                  </div>
+
+                  <div className="mt-1 text-xs text-slate-500">
+                    {chosen.locale}
+                    {" · "}
+                    {chosen.gender}
+                    {" · "}
+                    {chosen.provider}
+                  </div>
+
+                  <div className="mt-1 truncate text-[10px] text-slate-600">
+                    {chosen.id}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleFavorite(
+                      chosen
+                    )
+                  }
+                  className={
+                    favorites[
+                      chosen.id
+                    ]
+                      ? "text-pink-300"
+                      : "text-slate-500"
+                  }
+                >
+                  <Heart
+                    size={18}
+                    fill={
+                      favorites[
+                        chosen.id
+                      ]
+                        ? "currentColor"
+                        : "none"
+                    }
+                  />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <Label>
+              Search voices
+            </Label>
+
+            <div className="relative">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-3.5 text-slate-500"
+              />
+
+              <input
+                type="text"
+                value={voiceSearch}
+                onChange={(event) =>
+                  setVoiceSearch(
+                    event.target
+                      .value
+                  )
+                }
+                placeholder="Search voice, language or ID..."
+                className="w-full rounded-xl border border-white/10 bg-white/[.04] py-3 pl-9 pr-3 text-sm outline-none focus:border-violet-400/50"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label>
+              Voice category
+            </Label>
+
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setVoiceFilter(
+                    "all"
+                  )
+                }
+                className={`rounded-xl border p-2 text-xs ${
+                  voiceFilter ===
+                  "all"
+                    ? "border-violet-400/50 bg-violet-500/10"
+                    : "border-white/10"
+                }`}
+              >
+                All
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setVoiceFilter(
+                    "popular"
+                  )
+                }
+                className={`flex items-center justify-center gap-1 rounded-xl border p-2 text-xs ${
+                  voiceFilter ===
+                  "popular"
+                    ? "border-amber-400/50 bg-amber-500/10"
+                    : "border-white/10"
+                }`}
+              >
+                <Star size={12} />
+                Popular
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setVoiceFilter(
+                    "favorites"
+                  )
+                }
+                className={`flex items-center justify-center gap-1 rounded-xl border p-2 text-xs ${
+                  voiceFilter ===
+                  "favorites"
+                    ? "border-pink-400/50 bg-pink-500/10"
+                    : "border-white/10"
+                }`}
+              >
+                <Heart size={12} />
+                Favorites
+              </button>
+            </div>
+          </div>
+
           <div>
             <Label>
               Language
@@ -834,78 +939,191 @@ export default function Studio() {
 
             <select
               className="w-full rounded-xl border border-white/10 bg-slate-900 p-3"
-              value={lang}
+              value={voiceLanguage}
               onChange={(event) =>
-                changeLanguage(
+                setVoiceLanguage(
                   event.target.value
                 )
               }
             >
-              {[
-                ...new Set(
-                  voices.map(
-                    (item) =>
-                      item.locale
-                  )
-                ),
-              ]
-                .sort()
-                .map(
-                  (locale) => (
-                    <option
-                      key={locale}
-                      value={locale}
-                    >
-                      {locale}
-                    </option>
-                  )
-                )}
-            </select>
-          </div>
+              <option value="all">
+                All languages
+              </option>
 
-          {/* VOICE */}
-          <div>
-            <Label>
-              Voice
-            </Label>
-
-            <select
-              className="w-full rounded-xl border border-white/10 bg-slate-900 p-3"
-              value={
-                chosen?.id || ""
-              }
-              onChange={(event) =>
-                setVoice(
-                  event.target.value
-                )
-              }
-            >
-              {available.map(
-                (item) => (
+              {languages.map(
+                (locale) => (
                   <option
-                    key={item.id}
-                    value={item.id}
+                    key={locale}
+                    value={locale}
                   >
-                    {item.name} —{" "}
-                    {item.gender}
+                    {locale}
                   </option>
                 )
               )}
             </select>
-
-            {chosen && (
-              <p className="mt-2 text-xs text-slate-600">
-                {chosen.provider}{" "}
-                ·{" "}
-                {chosen.locale}
-                <br />
-                ID:{" "}
-                {chosen.id}
-              </p>
-            )}
           </div>
 
-          {/* SPEED */}
+          <div>
+            <Label>
+              Gender
+            </Label>
+
+            <div className="grid grid-cols-4 gap-2">
+              {(
+                [
+                  "all",
+                  "Male",
+                  "Female",
+                  "Neutral",
+                ] as const
+              ).map(
+                (item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() =>
+                      setVoiceGender(
+                        item
+                      )
+                    }
+                    className={`rounded-xl border p-2 text-xs ${
+                      voiceGender ===
+                      item
+                        ? "border-violet-400/50 bg-violet-500/10"
+                        : "border-white/10"
+                    }`}
+                  >
+                    {item ===
+                    "all"
+                      ? "All"
+                      : item}
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <Label>
+                Voices
+              </Label>
+
+              <span className="text-xs text-slate-500">
+                {
+                  filteredVoices.length
+                }{" "}
+                / {voices.length}
+              </span>
+            </div>
+
+            <div className="max-h-[430px] overflow-y-auto rounded-2xl border border-white/10 bg-black/10">
+              {filteredVoices.length ===
+              0 ? (
+                <div className="p-8 text-center text-sm text-slate-500">
+                  No voices found.
+                </div>
+              ) : (
+                <div className="divide-y divide-white/5">
+                  {filteredVoices.map(
+                    (item) => {
+                      const selected =
+                        chosen?.id ===
+                        item.id;
+
+                      const favorite =
+                        Boolean(
+                          favorites[
+                            item.id
+                          ]
+                        );
+
+                      return (
+                        <div
+                          key={
+                            item.id
+                          }
+                          className={`flex items-center gap-2 p-3 transition ${
+                            selected
+                              ? "bg-violet-500/10"
+                              : "hover:bg-white/5"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              selectVoice(
+                                item
+                              )
+                            }
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-sm font-semibold">
+                                {
+                                  item.name
+                                }
+                              </span>
+
+                              {item.isPopular && (
+                                <span className="shrink-0 rounded-md bg-amber-400/10 px-1.5 py-0.5 text-[9px] text-amber-300">
+                                  POPULAR
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="mt-1 truncate text-xs text-slate-500">
+                              {
+                                item.locale
+                              }
+                              {" · "}
+                              {
+                                item.gender
+                              }
+                              {" · "}
+                              {
+                                item.provider
+                              }
+                            </div>
+
+                            <div className="mt-1 truncate text-[10px] text-slate-600">
+                              {
+                                item.id
+                              }
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleFavorite(
+                                item
+                              )
+                            }
+                            className={
+                              favorite
+                                ? "shrink-0 text-pink-300"
+                                : "shrink-0 text-slate-600 hover:text-slate-300"
+                            }
+                          >
+                            <Heart
+                              size={16}
+                              fill={
+                                favorite
+                                  ? "currentColor"
+                                  : "none"
+                              }
+                            />
+                          </button>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
           <Range
             label="Speed"
             value={speed}
@@ -915,7 +1133,6 @@ export default function Studio() {
             set={setSpeed}
           />
 
-          {/* PITCH */}
           <Range
             label="Pitch"
             value={pitch}
@@ -925,7 +1142,6 @@ export default function Studio() {
             set={setPitch}
           />
 
-          {/* VOLUME */}
           <Range
             label="Volume"
             value={volume}
@@ -935,7 +1151,6 @@ export default function Studio() {
             set={setVolume}
           />
 
-          {/* FORMAT */}
           <div>
             <Label>
               Format
@@ -943,25 +1158,31 @@ export default function Studio() {
 
             <div className="grid grid-cols-2 gap-2">
               {(
-                ["mp3", "wav"] as const
-              ).map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() =>
-                    setFormat(
+                [
+                  "mp3",
+                  "wav",
+                ] as const
+              ).map(
+                (item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() =>
+                      setFormat(
+                        item
+                      )
+                    }
+                    className={`rounded-xl border p-3 ${
+                      format ===
                       item
-                    )
-                  }
-                  className={`rounded-xl border p-3 transition ${
-                    format === item
-                      ? "border-violet-400/50 bg-violet-500/10"
-                      : "border-white/10 hover:bg-white/5"
-                  }`}
-                >
-                  {item.toUpperCase()}
-                </button>
-              ))}
+                        ? "border-violet-400/50 bg-violet-500/10"
+                        : "border-white/10"
+                    }`}
+                  >
+                    {item.toUpperCase()}
+                  </button>
+                )
+              )}
             </div>
           </div>
         </Card>
@@ -970,9 +1191,6 @@ export default function Studio() {
   );
 }
 
-/*
- * Range control
- */
 function Range({
   label,
   value,
@@ -986,16 +1204,12 @@ function Range({
   min: number;
   max: number;
   step: number;
-  set: (
-    value: number
-  ) => void;
+  set: (value: number) => void;
 }) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <Label>
-          {label}
-        </Label>
+        <Label>{label}</Label>
 
         <span className="text-xs text-slate-400">
           {value}
