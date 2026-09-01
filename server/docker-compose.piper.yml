@@ -4,16 +4,35 @@ services:
       context: ./piper-service
     restart: unless-stopped
     ports:
-      - "5100:5100"
+      - "${PIPER_PORT:-5100}:5100"
     environment:
+      PORT: "5100"
       PIPER_MODELS_DIR: /models
-      PIPER_CATALOG_URL: https://huggingface.co/rhasspy/piper-voices/raw/main/voices.json
+      PIPER_CATALOG_URL: ${PIPER_CATALOG_URL:-https://huggingface.co/rhasspy/piper-voices/raw/main/voices.json}
       PIPER_AUTH_TOKEN: ${PIPER_AUTH_TOKEN:-}
+      PIPER_CORS_ORIGIN: ${PIPER_CORS_ORIGIN:-*}
       PIPER_USE_CUDA: ${PIPER_USE_CUDA:-false}
       PIPER_MAX_TEXT_CHARS: ${PIPER_MAX_TEXT_CHARS:-12000}
-      PORT: 5100
+      PIPER_MAX_REQUEST_BYTES: ${PIPER_MAX_REQUEST_BYTES:-524288}
+      PIPER_CATALOG_CACHE_SECONDS: ${PIPER_CATALOG_CACHE_SECONDS:-900}
+      PIPER_SERVICE_VERSION: ${PIPER_SERVICE_VERSION:-1.0.0}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
+      GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-300}
     volumes:
       - piper_models:/models
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5100/health', timeout=3).read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
 volumes:
   piper_models:
